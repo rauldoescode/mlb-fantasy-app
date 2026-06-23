@@ -1,0 +1,33 @@
+# Dependencies
+.venv/
+node_modules/
+web/.next/
+web/out/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+
+# Build output
+league-engine/target/
+*.class
+*.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/*
+!.vscode/settings.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

@@ -1,0 +1,17 @@
+# For use with Supabase CLI (supabase init / supabase db push)
+# https://supabase.com/docs/guides/cli
+
+[project]
+id = "your-project-id"
+
+[api]
+enabled = true
+port = 54321
+
+[db]
+port = 54322
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323

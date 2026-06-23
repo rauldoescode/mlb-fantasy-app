@@ -1,0 +1,4 @@
+python-mlb-statsapi==0.7.2
+psycopg2-binary
+sqlalchemy
+python-dotenv
