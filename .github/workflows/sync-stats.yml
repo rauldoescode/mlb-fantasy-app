@@ -1,0 +1,34 @@
+name: Sync MLB Stats
+
+on:
+  schedule:
+    # 9:00 UTC = 4:00 EST
+    - cron: '0 9 * * *'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14.6'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run:
+          pip3 install -r data-worker/requirements.txt
+
+      - name: Sync players
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python3 data-worker/sync_players.py
+
+      - name: Sync daily stats
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python3 data-worker/sync_daily_stats.py
