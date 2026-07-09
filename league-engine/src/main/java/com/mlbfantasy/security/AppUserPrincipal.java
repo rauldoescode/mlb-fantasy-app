@@ -19,6 +19,7 @@ public class AppUserPrincipal implements UserDetails {
     private final String displayName;
     private final String passwordHash;
     private final String role;
+    private final String avatarUrl;
 
     public AppUserPrincipal(User user) {
         this.id = user.getId();
@@ -26,6 +27,7 @@ public class AppUserPrincipal implements UserDetails {
         this.displayName = user.getDisplayName();
         this.passwordHash = user.getPasswordHash();
         this.role = user.getRole();
+        this.avatarUrl = user.getAvatarUrl();
     }
 
     public UUID getId() {
@@ -42,6 +44,10 @@ public class AppUserPrincipal implements UserDetails {
 
     public String getRole() {
         return role;
+    }
+
+    public String getAvatarUrl() {
+        return avatarUrl;
     }
 
     @Override
