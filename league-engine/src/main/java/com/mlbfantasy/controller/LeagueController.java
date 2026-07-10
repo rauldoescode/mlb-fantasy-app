@@ -2,9 +2,13 @@ package com.mlbfantasy.controller;
 
 import com.mlbfantasy.dto.AddMemberRequest;
 import com.mlbfantasy.dto.CreateLeagueRequest;
+import com.mlbfantasy.dto.JoinByCodeRequest;
+import com.mlbfantasy.dto.JoinLeagueRequest;
 import com.mlbfantasy.dto.LeagueResponse;
+import com.mlbfantasy.dto.PublicLeagueResponse;
 import com.mlbfantasy.dto.ScoringRulesRequest;
 import com.mlbfantasy.dto.StandingRow;
+import com.mlbfantasy.dto.UpdateVisibilityRequest;
 import com.mlbfantasy.security.AppUserPrincipal;
 import com.mlbfantasy.service.LeagueService;
 import jakarta.validation.Valid;
@@ -42,6 +46,42 @@ public class LeagueController {
     @GetMapping
     public List<LeagueResponse> myLeagues(@AuthenticationPrincipal AppUserPrincipal principal) {
         return leagueService.getLeaguesForUser(principal.getId());
+    }
+
+    @GetMapping("/public")
+    public List<PublicLeagueResponse> publicLeagues() {
+        return leagueService.listPublicLeagues();
+    }
+
+    @PostMapping("/{leagueId}/join")
+    public LeagueResponse join(
+            @AuthenticationPrincipal AppUserPrincipal principal,
+            @PathVariable UUID leagueId,
+            @Valid @RequestBody JoinLeagueRequest request) {
+        return leagueService.joinPublicLeague(leagueId, principal.getId(), request.teamName());
+    }
+
+    @PostMapping("/join-by-code")
+    public LeagueResponse joinByCode(
+            @AuthenticationPrincipal AppUserPrincipal principal,
+            @Valid @RequestBody JoinByCodeRequest request) {
+        return leagueService.joinLeagueByCode(
+                request.joinCode(), principal.getId(), request.teamName());
+    }
+
+    @PostMapping("/{leagueId}/join-code/regenerate")
+    public LeagueResponse regenerateJoinCode(
+            @AuthenticationPrincipal AppUserPrincipal principal,
+            @PathVariable UUID leagueId) {
+        return leagueService.regenerateJoinCode(leagueId, principal.getId());
+    }
+
+    @PutMapping("/{leagueId}/visibility")
+    public LeagueResponse updateVisibility(
+            @AuthenticationPrincipal AppUserPrincipal principal,
+            @PathVariable UUID leagueId,
+            @Valid @RequestBody UpdateVisibilityRequest request) {
+        return leagueService.updateVisibility(leagueId, principal.getId(), request.visibility());
     }
 
     @GetMapping("/{leagueId}")

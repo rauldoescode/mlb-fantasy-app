@@ -2,6 +2,8 @@ package com.mlbfantasy.model;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -34,6 +36,16 @@ public class League {
 
     @Column(name = "roster_size", nullable = false)
     private int rosterSize = 10;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "visibility", nullable = false)
+    private LeagueVisibility visibility = LeagueVisibility.PRIVATE;
+
+    @Column(name = "join_code", unique = true)
+    private String joinCode;
+
+    @Column(name = "max_members", nullable = false)
+    private int maxMembers = 10;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
@@ -90,6 +102,30 @@ public class League {
 
     public void setRosterSize(int rosterSize) {
         this.rosterSize = rosterSize;
+    }
+
+    public LeagueVisibility getVisibility() {
+        return visibility;
+    }
+
+    public void setVisibility(LeagueVisibility visibility) {
+        this.visibility = visibility;
+    }
+
+    public String getJoinCode() {
+        return joinCode;
+    }
+
+    public void setJoinCode(String joinCode) {
+        this.joinCode = joinCode;
+    }
+
+    public int getMaxMembers() {
+        return maxMembers;
+    }
+
+    public void setMaxMembers(int maxMembers) {
+        this.maxMembers = maxMembers;
     }
 
     public OffsetDateTime getCreatedAt() {

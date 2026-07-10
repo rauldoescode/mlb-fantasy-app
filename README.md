@@ -18,7 +18,7 @@ MLB Fantasy App/
 │   ├── pom.xml
 │   └── src/main/java/com/mlbfantasy/
 │       ├── LeagueEngineApplication.java
-│       ├── config/           # Security, CORS, DATABASE_URL normalization
+│       ├── config/           # Security and CORS configuration
 │       ├── controller/       # REST endpoints
 │       ├── service/          # Scoring, matchups, roster logic
 │       ├── model/            # JPA entities
@@ -53,22 +53,25 @@ Services communicate through PostgreSQL only — no direct Python-to-Java calls.
 
 ## Getting Started
 
-1. Copy `.env.example` to `.env` and set `DATABASE_URL` and `JWT_SECRET`.
-2. **Database:** apply the SQL files in `supabase/migrations/` in order (`001` → `005`).
+1. Copy `.env.example` to `.env` and set `DATABASE_URL`, `JDBC_DATABASE_URL`, and
+   `JWT_SECRET`. The two database URLs point at the same Postgres in different formats:
+   `DATABASE_URL` is the psycopg2/libpq form for Python
+   (`postgresql://user:pass@host:port/db`), and `JDBC_DATABASE_URL` is the JDBC form for
+   Java, with credentials in the query string
+   (`jdbc:postgresql://host:port/db?user=...&password=...`).
+2. **Database:** apply the SQL files in `supabase/migrations/` in order (`001` → `006`).
 3. **Data worker:** `cd data-worker && pip install -r requirements.txt`, then run
    `python sync_players.py` followed by `python generate_salaries.py` to seed the
    `players` table and its fantasy salaries.
 4. **League engine:** `cd league-engine && mvn spring-boot:run` (needs JDK 21+). Reads
-   `DATABASE_URL` and `JWT_SECRET` from the environment — unlike the Python scripts,
-   Spring Boot doesn't auto-load `.env`, so export both first, e.g.:
+   `JDBC_DATABASE_URL` and `JWT_SECRET` from the environment — unlike the Python scripts,
+   Spring Boot doesn't auto-load `.env`, so export them first, e.g.:
    ```bash
    eval "$(python3 -c "from dotenv import dotenv_values; [print(f\"export {k}='{v}'\") for k, v in dotenv_values('.env').items()]")"
    cd league-engine && mvn spring-boot:run
    ```
-   `DATABASE_URL` can stay in the same psycopg2 form the data worker uses
-   (`postgresql://user:pass@host:port/db`) — a `DatabaseUrlEnvironmentPostProcessor`
-   auto-converts it to the JDBC form Spring needs at startup.
-5. **Frontend:** `cd web && npm install && npm run dev`
+5. **Frontend:** `cd web && npm install && npm run dev`. Copy `web/.env.example` to
+   `web/.env.local` if the league-engine isn't running on `http://localhost:8080`.
 
 ### League engine API (Phase 2)
 
@@ -86,6 +89,16 @@ JWT-secured Spring Boot service. Public endpoints: `POST /api/auth/register`,
 Rosters enforce a per-league salary cap, and lineup changes lock once a player's
 game for the day has started (driven by `player_scheduled_games`). Weekly H2H scoring
 runs Monday–Sunday using each league's configurable `scoring_rules`.
+
+### Frontend design system
+
+The web app takes visual cues from Sleeper: dark-only theme, bold diamond-green
+accent, rounded cards, and avatar-driven identity throughout. Built with Tailwind
+CSS v4 (CSS-variable theme in `web/app/globals.css`) and hand-rolled shadcn/ui-style
+components in `web/components/ui/`. Users upload a profile photo (client-resized to
+a small square JPEG, stored as a data URL in `users.avatar_url` — no object storage
+service needed for a friends-and-family league); `web/components/avatar-upload.tsx`
+handles the resize + upload flow against `PATCH /api/auth/me/avatar`.
 
 ### Player salaries
 

@@ -3,6 +3,7 @@
 node_modules/
 web/.next/
 web/out/
+*.tsbuildinfo
 
 # Python Cache
 __pycache__/
