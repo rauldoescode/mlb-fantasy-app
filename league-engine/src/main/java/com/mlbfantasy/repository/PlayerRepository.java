@@ -9,9 +9,13 @@ import org.springframework.data.repository.query.Param;
 
 public interface PlayerRepository extends JpaRepository<Player, Integer> {
 
+    // The explicit CAST(:search AS string) is required so PostgreSQL can infer the
+    // parameter type. Without it, a null bind inside CONCAT/LOWER is treated as bytea
+    // and the query fails with "function lower(bytea) does not exist".
     @Query("""
             SELECT p FROM Player p
-            WHERE (:search IS NULL OR LOWER(p.fullName) LIKE LOWER(CONCAT('%', :search, '%')))
+            WHERE (CAST(:search AS string) IS NULL
+                   OR LOWER(p.fullName) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')))
               AND (:position IS NULL OR p.primaryPos = :position)
               AND (:team IS NULL OR p.teamAbbrev = :team)
             """)

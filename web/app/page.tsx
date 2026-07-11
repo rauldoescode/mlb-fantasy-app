@@ -84,7 +84,7 @@ export default function DashboardPage() {
           {currentLeague.name} · {currentLeague.seasonYear}
         </p>
         <h1 className="text-2xl font-bold tracking-tight">
-          Hey {user.displayName.split(" ")[0]} 👋
+          Hey {user.displayName.split(" ")[0]} ⚾️
         </h1>
       </div>
 
