@@ -116,12 +116,57 @@ export type ScoreBreakdown = {
   categoryPoints: Record<string, number>;
 };
 
+export type PlayerGamePerformance = {
+  gamePk: number;
+  gameDate: string;
+  points: number;
+  categoryPoints: Record<string, number>;
+  eligible: boolean;
+};
+
+export type LineupPlayerCard = {
+  slotId: string | null;
+  playerId: number;
+  fullName: string | null;
+  position: string | null;
+  teamAbbrev: string | null;
+  active: boolean;
+  locked: boolean;
+  weekPoints: number;
+  bestGamePoints: number;
+  scoringGamePk: number | null;
+  performanceLocked: boolean;
+  games: PlayerGamePerformance[];
+};
+
+export type MatchupLineupSide = {
+  userId: string;
+  teamName: string;
+  starters: LineupPlayerCard[];
+  bench: LineupPlayerCard[];
+  totalPoints: number;
+};
+
 export type MatchupDetailResponse = {
   matchup: MatchupResponse;
   weekStart: string;
   weekEnd: string;
   userOneBreakdown: ScoreBreakdown;
   userTwoBreakdown: ScoreBreakdown;
+  userOneLineup: MatchupLineupSide;
+  userTwoLineup: MatchupLineupSide;
+  lineupEditable: boolean;
+};
+
+export type PerformanceLockResponse = {
+  id: string;
+  leagueId: string;
+  userId: string;
+  weekNumber: number;
+  playerId: number;
+  gamePk: number;
+  autoLocked: boolean;
+  lockedAt: string | null;
 };
 
 export type PlayerResponse = {
@@ -228,6 +273,32 @@ export const api = {
 
   matchupDetail: (matchupId: string) =>
     request<MatchupDetailResponse>(`/api/matchups/${matchupId}`),
+
+  setMatchupLineup: (matchupId: string, slotId: string, active: boolean) =>
+    request<RosterSlotResponse>(`/api/matchups/${matchupId}/lineup/${slotId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ active }),
+    }),
+
+  lockPerformance: (
+    leagueId: string,
+    weekNumber: number,
+    playerId: number,
+    gamePk?: number | null
+  ) =>
+    request<PerformanceLockResponse>(
+      `/api/leagues/${leagueId}/weeks/${weekNumber}/players/${playerId}/lock-performance`,
+      {
+        method: "POST",
+        body: JSON.stringify(gamePk == null ? {} : { gamePk }),
+      }
+    ),
+
+  unlockPerformance: (leagueId: string, weekNumber: number, playerId: number) =>
+    request<void>(
+      `/api/leagues/${leagueId}/weeks/${weekNumber}/players/${playerId}/lock-performance`,
+      { method: "DELETE" }
+    ),
 
   roster: (leagueId: string) => request<RosterResponse>(`/api/leagues/${leagueId}/roster`),
 

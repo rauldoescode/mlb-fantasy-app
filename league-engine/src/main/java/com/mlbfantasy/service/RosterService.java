@@ -36,12 +36,20 @@ public class RosterService {
         this.lineupLockService = lineupLockService;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public RosterResponse getRoster(UUID leagueId, UUID userId) {
         leagueService.requireMember(leagueId, userId);
         League league = leagueService.requireLeague(leagueId);
         List<RosterSlot> slots = rosterSlotRepository.findByLeagueIdAndUserId(leagueId, userId);
         Map<Integer, Player> players = loadPlayers(slots);
+
+        // Lazy-freeze today's eligibility for any player whose game has already started.
+        for (RosterSlot slot : slots) {
+            if (slot.getPlayerId() != null) {
+                lineupLockService.materializeTodaysLockIfNeeded(
+                        leagueId, userId, slot.getPlayerId(), Boolean.TRUE.equals(slot.getActive()));
+            }
+        }
 
         List<RosterSlotResponse> slotResponses = slots.stream()
                 .map(slot -> RosterSlotResponse.from(
@@ -64,10 +72,15 @@ public class RosterService {
     @Transactional
     public RosterSlotResponse addPlayer(UUID leagueId, UUID userId, AddRosterPlayerRequest request) {
         leagueService.requireMember(leagueId, userId);
+        lineupLockService.requireLineupEditable(leagueId, userId);
         League league = leagueService.requireLeague(leagueId);
 
         Player player = playerRepository.findById(request.playerId())
                 .orElseThrow(() -> ApiException.notFound("Player not found"));
+
+        if (lineupLockService.isPlayerLocked(player.getMlbId())) {
+            throw ApiException.conflict("This player's game has started; the slot is locked");
+        }
 
         rosterSlotRepository.findFirstByLeagueIdAndPlayerId(leagueId, request.playerId())
                 .ifPresent(existing -> {
@@ -91,12 +104,14 @@ public class RosterService {
         boolean active = request.active() == null || request.active();
         RosterSlot slot = new RosterSlot(leagueId, userId, request.playerId(), request.slotType(), active);
         slot = rosterSlotRepository.save(slot);
+        lineupLockService.syncOpenWeekEligibility(leagueId, userId, player.getMlbId(), active);
         return RosterSlotResponse.from(slot, player, lineupLockService.isPlayerLocked(player.getMlbId()));
     }
 
     @Transactional
     public RosterSlotResponse updateSlot(UUID slotId, UUID userId, UpdateRosterSlotRequest request) {
         RosterSlot slot = requireOwnedSlot(slotId, userId);
+        lineupLockService.requireLineupEditable(slot.getLeagueId(), userId);
         if (lineupLockService.isPlayerLocked(slot.getPlayerId())) {
             throw ApiException.conflict("This player's game has started; the slot is locked");
         }
@@ -107,6 +122,10 @@ public class RosterService {
             slot.setSlotType(request.slotType());
         }
         slot = rosterSlotRepository.save(slot);
+        if (slot.getPlayerId() != null && request.active() != null) {
+            lineupLockService.syncOpenWeekEligibility(
+                    slot.getLeagueId(), userId, slot.getPlayerId(), Boolean.TRUE.equals(slot.getActive()));
+        }
         Player player = slot.getPlayerId() == null ? null
                 : playerRepository.findById(slot.getPlayerId()).orElse(null);
         return RosterSlotResponse.from(slot, player, false);
@@ -115,6 +134,7 @@ public class RosterService {
     @Transactional
     public void removeSlot(UUID slotId, UUID userId) {
         RosterSlot slot = requireOwnedSlot(slotId, userId);
+        lineupLockService.requireLineupEditable(slot.getLeagueId(), userId);
         if (lineupLockService.isPlayerLocked(slot.getPlayerId())) {
             throw ApiException.conflict("This player's game has started; the slot is locked");
         }

@@ -7,6 +7,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
@@ -41,6 +42,9 @@ public class Matchup {
 
     @Column(name = "status", nullable = false)
     private String status = "SCHEDULED";
+
+    @Column(name = "finalized_at")
+    private OffsetDateTime finalizedAt;
 
     protected Matchup() {
     }
@@ -105,5 +109,13 @@ public class Matchup {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public OffsetDateTime getFinalizedAt() {
+        return finalizedAt;
+    }
+
+    public void setFinalizedAt(OffsetDateTime finalizedAt) {
+        this.finalizedAt = finalizedAt;
     }
 }

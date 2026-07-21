@@ -1,23 +1,28 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Swords, ShieldAlert } from "lucide-react";
 
 import { useAuth } from "@/lib/auth-context";
 import { useLeague } from "@/lib/league-context";
 import {
   api,
+  ApiError,
+  type LineupPlayerCard,
   type MatchupDetailResponse,
+  type MatchupLineupSide,
   type MatchupResponse,
   type SeasonResponse,
   type StandingRow,
 } from "@/lib/api";
 import { pickCurrentMatchup } from "@/lib/matchup-utils";
 import { formatPoints, formatCategoryLabel } from "@/lib/format";
+import { MatchupLineupCard, busyKeyFor } from "@/components/matchup-lineup-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UserAvatar } from "@/components/user-avatar";
 import { EmptyState } from "@/components/empty-state";
 import { Separator } from "@/components/ui/separator";
@@ -34,6 +39,8 @@ export default function MatchupPage() {
   const [detail, setDetail] = useState<MatchupDetailResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!currentLeague || !user) return;
@@ -62,18 +69,83 @@ export default function MatchupPage() {
     );
   }, [matchups, user, week]);
 
+  const reloadDetail = useCallback(async () => {
+    if (!activeMatchup) {
+      setDetail(null);
+      return;
+    }
+    const next = await api.matchupDetail(activeMatchup.id);
+    setDetail(next);
+    setMatchups((prev) =>
+      prev
+        ? prev.map((m) => (m.id === next.matchup.id ? next.matchup : m))
+        : prev
+    );
+  }, [activeMatchup]);
+
   useEffect(() => {
     if (!activeMatchup) {
       setDetail(null);
       return;
     }
     setIsDetailLoading(true);
+    setActionError(null);
     api
       .matchupDetail(activeMatchup.id)
       .then(setDetail)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load matchup"))
       .finally(() => setIsDetailLoading(false));
   }, [activeMatchup]);
+
+  async function handleToggleActive(player: LineupPlayerCard, active: boolean) {
+    if (!detail || !player.slotId) return;
+    setBusyKey(busyKeyFor(player));
+    setActionError(null);
+    try {
+      await api.setMatchupLineup(detail.matchup.id, player.slotId, active);
+      await reloadDetail();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Couldn't update lineup");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function handleLockBest(player: LineupPlayerCard) {
+    if (!detail || !currentLeague) return;
+    setBusyKey(busyKeyFor(player));
+    setActionError(null);
+    try {
+      await api.lockPerformance(
+        currentLeague.id,
+        detail.matchup.weekNumber,
+        player.playerId
+      );
+      await reloadDetail();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Couldn't lock that performance");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function handleUnlock(player: LineupPlayerCard) {
+    if (!detail || !currentLeague) return;
+    setBusyKey(busyKeyFor(player));
+    setActionError(null);
+    try {
+      await api.unlockPerformance(
+        currentLeague.id,
+        detail.matchup.weekNumber,
+        player.playerId
+      );
+      await reloadDetail();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Couldn't unlock that performance");
+    } finally {
+      setBusyKey(null);
+    }
+  }
 
   if (!leaguesLoading && leagues.length === 0) {
     return (
@@ -91,10 +163,7 @@ export default function MatchupPage() {
     return <EmptyState icon={ShieldAlert} title="Couldn't load matchup" description={error} />;
   }
 
-  const nameFor = (userId: string) =>
-    standings.find((s) => s.userId === userId)?.teamName ??
-    standings.find((s) => s.userId === userId)?.displayName ??
-    "TBD";
+  const oriented = detail ? orientSides(detail, user.id) : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -126,7 +195,7 @@ export default function MatchupPage() {
 
       {!activeMatchup ? (
         <EmptyState icon={Swords} title="No matchup this week" description="Nothing scheduled for this week yet." />
-      ) : isDetailLoading || !detail ? (
+      ) : isDetailLoading || !detail || !oriented ? (
         <MatchupSkeleton />
       ) : (
         <>
@@ -156,37 +225,124 @@ export default function MatchupPage() {
 
               <div className="flex items-center justify-between gap-4">
                 <TeamScore
-                  name={nameFor(detail.matchup.userOneId)}
-                  avatarUrl={detail.matchup.userOneId === user.id ? user.avatarUrl : null}
-                  score={detail.userOneBreakdown.totalPoints}
-                  winner={detail.matchup.winnerId === detail.matchup.userOneId}
+                  name={oriented.leftLabel}
+                  avatarUrl={oriented.leftUserId === user.id ? user.avatarUrl : null}
+                  score={oriented.leftBreakdown.totalPoints}
+                  winner={detail.matchup.winnerId === oriented.leftUserId}
                 />
                 <span className="text-sm font-bold text-muted-foreground">VS</span>
                 <TeamScore
-                  name={nameFor(detail.matchup.userTwoId)}
-                  avatarUrl={detail.matchup.userTwoId === user.id ? user.avatarUrl : null}
-                  score={detail.userTwoBreakdown.totalPoints}
-                  winner={detail.matchup.winnerId === detail.matchup.userTwoId}
+                  name={oriented.rightLabel}
+                  avatarUrl={oriented.rightUserId === user.id ? user.avatarUrl : null}
+                  score={oriented.rightBreakdown.totalPoints}
+                  winner={detail.matchup.winnerId === oriented.rightUserId}
                 />
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Category breakdown</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <CategoryTable
-                left={detail.userOneBreakdown.categoryPoints}
-                right={detail.userTwoBreakdown.categoryPoints}
+          {actionError ? (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm font-medium text-destructive">
+              {actionError}
+            </div>
+          ) : null}
+
+          {!detail.lineupEditable && detail.matchup.status !== "FINAL" ? (
+            <p className="text-center text-xs text-muted-foreground">
+              Lineup edits are only available for the current open week.
+            </p>
+          ) : null}
+
+          <Tabs defaultValue="lineups">
+            <TabsList className="w-full sm:w-auto">
+              <TabsTrigger value="lineups" className="flex-1 sm:flex-none">
+                Lineups
+              </TabsTrigger>
+              <TabsTrigger value="categories" className="flex-1 sm:flex-none">
+                Categories
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="lineups" className="mt-4">
+              <MatchupLineupCard
+                left={oriented.leftLineup}
+                right={oriented.rightLineup}
+                leftEditable={oriented.leftEditable}
+                rightEditable={oriented.rightEditable}
+                busyKey={busyKey}
+                onToggleActive={handleToggleActive}
+                onLockBest={handleLockBest}
+                onUnlock={handleUnlock}
               />
-            </CardContent>
-          </Card>
+            </TabsContent>
+            <TabsContent value="categories" className="mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Category breakdown</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <CategoryTable
+                    left={oriented.leftBreakdown.categoryPoints}
+                    right={oriented.rightBreakdown.categoryPoints}
+                    leftName={oriented.leftLabel}
+                    rightName={oriented.rightLabel}
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </>
       )}
     </div>
   );
+}
+
+/** Put the viewer's team on the left when they are a participant. */
+function emptySide(userId: string | null | undefined): MatchupLineupSide {
+  return {
+    userId: userId ?? "",
+    teamName: "",
+    starters: [],
+    bench: [],
+    totalPoints: 0,
+  };
+}
+
+function orientSides(detail: MatchupDetailResponse, userId: string) {
+  const youAreOne = detail.matchup.userOneId === userId;
+  const youAreTwo = detail.matchup.userTwoId === userId;
+  const swap = youAreTwo;
+  const isParticipant = youAreOne || youAreTwo;
+
+  const oneSide = detail.userOneLineup ?? emptySide(detail.matchup.userOneId);
+  const twoSide = detail.userTwoLineup ?? emptySide(detail.matchup.userTwoId);
+
+  const leftLineup = swap ? twoSide : oneSide;
+  const rightLineup = swap ? oneSide : twoSide;
+  const leftBreakdown = swap ? detail.userTwoBreakdown : detail.userOneBreakdown;
+  const rightBreakdown = swap ? detail.userOneBreakdown : detail.userTwoBreakdown;
+  const leftUserId = swap ? detail.matchup.userTwoId : detail.matchup.userOneId;
+  const rightUserId = swap ? detail.matchup.userOneId : detail.matchup.userTwoId;
+
+  const leftEditable = detail.lineupEditable && isParticipant && leftUserId === userId;
+  const rightEditable = detail.lineupEditable && isParticipant && rightUserId === userId;
+
+  const leftLabel =
+    isParticipant && leftUserId === userId ? "You" : leftLineup.teamName || "Opponent";
+  const rightLabel =
+    isParticipant && rightUserId === userId ? "You" : rightLineup.teamName || "Opponent";
+
+  return {
+    leftLineup: { ...leftLineup, teamName: leftLabel },
+    rightLineup: { ...rightLineup, teamName: rightLabel },
+    leftBreakdown,
+    rightBreakdown,
+    leftUserId,
+    rightUserId,
+    leftLabel,
+    rightLabel,
+    leftEditable,
+    rightEditable,
+  };
 }
 
 function TeamScore({
@@ -214,9 +370,13 @@ function TeamScore({
 function CategoryTable({
   left,
   right,
+  leftName,
+  rightName,
 }: {
   left: Record<string, number>;
   right: Record<string, number>;
+  leftName: string;
+  rightName: string;
 }) {
   const categories = Array.from(new Set([...Object.keys(left), ...Object.keys(right)])).sort();
 
@@ -226,6 +386,11 @@ function CategoryTable({
 
   return (
     <div className="flex flex-col">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 pb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <span className="truncate text-right">{leftName}</span>
+        <span className="w-32 text-center">Stat</span>
+        <span className="truncate text-left">{rightName}</span>
+      </div>
       {categories.map((key, i) => {
         const l = left[key] ?? 0;
         const r = right[key] ?? 0;
@@ -264,7 +429,11 @@ function MatchupSkeleton() {
   return (
     <div className="flex flex-col gap-6">
       <Skeleton className="h-56 w-full rounded-xl" />
-      <Skeleton className="h-72 w-full rounded-xl" />
+      <Skeleton className="h-10 w-48 rounded-lg" />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Skeleton className="h-72 w-full rounded-xl" />
+        <Skeleton className="h-72 w-full rounded-xl" />
+      </div>
     </div>
   );
 }

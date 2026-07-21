@@ -8,9 +8,12 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * Automatically keeps every league's H2H schedule up to date so commissioners never
- * have to generate matchups by hand. Runs daily; the read path also lazily fills in any
- * missing weeks, so a missed run (e.g. the server was offline) self-heals on next load.
+ * Automatically keeps every league's H2H schedule up to date and finalizes weeks
+ * after they end so scores become immutable.
+ *
+ * <p>Generate runs daily; finalize runs Tuesday 06:00 in the league zone (after
+ * Monday night West Coast games and the nightly stat sync window). The read path
+ * also lazily fills missing weeks, so a missed generate run self-heals on next load.
  */
 @Component
 public class MatchupScheduler {
@@ -33,6 +36,24 @@ public class MatchupScheduler {
             } catch (Exception ex) {
                 // Don't let one bad league stop scheduling for the rest.
                 log.warn("Failed to auto-generate matchups for league {}", league.getId(), ex);
+            }
+        }
+    }
+
+    /**
+     * Finalizes all matchups whose calendar week has fully ended. Idempotent —
+     * already-FINAL matchups with snapshots are skipped.
+     */
+    @Scheduled(cron = "0 0 6 * * TUE", zone = "${app.season.zone}")
+    public void finalizeCompletedMatchups() {
+        for (League league : leagueRepository.findAll()) {
+            try {
+                int count = matchupService.finalizeCompletedWeeks(league.getId());
+                if (count > 0) {
+                    log.info("Auto-finalized {} matchup(s) for league {}", count, league.getId());
+                }
+            } catch (Exception ex) {
+                log.warn("Failed to auto-finalize matchups for league {}", league.getId(), ex);
             }
         }
     }
