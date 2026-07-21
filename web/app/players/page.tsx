@@ -14,7 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { cn } from "@/lib/utils";
 
-const POSITIONS = ["ALL", "C", "1B", "2B", "3B", "SS", "OF", "SP", "RP", "DH"];
+const POSITIONS = ["ALL", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "P", "DH"];
 const PAGE_SIZE = 20;
 
 export default function PlayersPage() {
