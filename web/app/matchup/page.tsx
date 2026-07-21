@@ -5,7 +5,13 @@ import { ChevronLeft, ChevronRight, Swords, ShieldAlert } from "lucide-react";
 
 import { useAuth } from "@/lib/auth-context";
 import { useLeague } from "@/lib/league-context";
-import { api, type MatchupDetailResponse, type MatchupResponse, type StandingRow } from "@/lib/api";
+import {
+  api,
+  type MatchupDetailResponse,
+  type MatchupResponse,
+  type SeasonResponse,
+  type StandingRow,
+} from "@/lib/api";
 import { pickCurrentMatchup } from "@/lib/matchup-utils";
 import { formatPoints, formatCategoryLabel } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +29,7 @@ export default function MatchupPage() {
 
   const [matchups, setMatchups] = useState<MatchupResponse[] | null>(null);
   const [standings, setStandings] = useState<StandingRow[] | null>(null);
+  const [season, setSeason] = useState<SeasonResponse | null>(null);
   const [week, setWeek] = useState<number | null>(null);
   const [detail, setDetail] = useState<MatchupDetailResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -31,12 +38,17 @@ export default function MatchupPage() {
   useEffect(() => {
     if (!currentLeague || !user) return;
     setError(null);
-    Promise.all([api.matchups(currentLeague.id), api.standings(currentLeague.id)])
-      .then(([m, s]) => {
+    Promise.all([
+      api.matchups(currentLeague.id),
+      api.standings(currentLeague.id),
+      api.season(),
+    ])
+      .then(([m, s, seasonInfo]) => {
         setMatchups(m);
         setStandings(s);
+        setSeason(seasonInfo);
         const current = pickCurrentMatchup(m, user.id);
-        setWeek(current?.weekNumber ?? null);
+        setWeek(current?.weekNumber ?? seasonInfo.currentWeek);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load matchups"));
   }, [currentLeague, user]);
@@ -69,9 +81,11 @@ export default function MatchupPage() {
     );
   }
 
-  if (leaguesLoading || !currentLeague || !user || !matchups || !standings) {
+  if (leaguesLoading || !currentLeague || !user || !matchups || !standings || !season) {
     return <MatchupSkeleton />;
   }
+
+  const totalWeeks = season.totalWeeks;
 
   if (error) {
     return <EmptyState icon={ShieldAlert} title="Couldn't load matchup" description={error} />;
@@ -95,8 +109,16 @@ export default function MatchupPage() {
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span className="w-20 text-center text-sm font-semibold">Week {week ?? "—"}</span>
-          <Button variant="outline" size="icon" onClick={() => setWeek((w) => (w ?? 1) + 1)}>
+          <span className="w-24 text-center text-sm font-semibold">
+            Week {week ?? "—"}
+            <span className="text-muted-foreground"> / {totalWeeks}</span>
+          </span>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setWeek((w) => Math.min(totalWeeks, (w ?? 1) + 1))}
+            disabled={week == null || week >= totalWeeks}
+          >
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>

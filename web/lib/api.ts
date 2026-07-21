@@ -81,6 +81,11 @@ export type PublicLeagueResponse = {
   maxMembers: number;
 };
 
+export type SeasonResponse = {
+  currentWeek: number;
+  totalWeeks: number;
+};
+
 export type StandingRow = {
   userId: string;
   displayName: string;
@@ -218,6 +223,8 @@ export const api = {
     request<MatchupResponse[]>(
       `/api/leagues/${leagueId}/matchups${week ? `?week=${week}` : ""}`
     ),
+
+  season: () => request<SeasonResponse>("/api/season"),
 
   matchupDetail: (matchupId: string) =>
     request<MatchupDetailResponse>(`/api/matchups/${matchupId}`),

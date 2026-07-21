@@ -101,8 +101,8 @@ export default function DashboardPage() {
       ) : (
         <EmptyState
           icon={Swords}
-          title="No matchup scheduled yet"
-          description="Your commissioner hasn't generated matchups for this week."
+          title="No matchup this week"
+          description="You may have a bye this week, or your league needs at least two teams to schedule matchups."
         />
       )}
 

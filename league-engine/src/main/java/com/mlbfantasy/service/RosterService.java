@@ -69,10 +69,14 @@ public class RosterService {
         Player player = playerRepository.findById(request.playerId())
                 .orElseThrow(() -> ApiException.notFound("Player not found"));
 
-        if (rosterSlotRepository.findByLeagueIdAndUserIdAndPlayerId(leagueId, userId, request.playerId())
-                .isPresent()) {
-            throw ApiException.conflict("Player is already on your roster");
-        }
+        rosterSlotRepository.findFirstByLeagueIdAndPlayerId(leagueId, request.playerId())
+                .ifPresent(existing -> {
+                    if (userId.equals(existing.getUserId())) {
+                        throw ApiException.conflict("Player is already on your roster");
+                    }
+                    throw ApiException.conflict(
+                            "Player is already rostered by another team in this league");
+                });
 
         long currentCount = rosterSlotRepository.countByLeagueIdAndUserId(leagueId, userId);
         if (currentCount >= league.getRosterSize()) {

@@ -14,5 +14,7 @@ public interface RosterSlotRepository extends JpaRepository<RosterSlot, UUID> {
 
     Optional<RosterSlot> findByLeagueIdAndUserIdAndPlayerId(UUID leagueId, UUID userId, Integer playerId);
 
+    Optional<RosterSlot> findFirstByLeagueIdAndPlayerId(UUID leagueId, Integer playerId);
+
     long countByLeagueIdAndUserId(UUID leagueId, UUID userId);
 }

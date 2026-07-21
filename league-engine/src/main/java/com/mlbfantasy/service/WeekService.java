@@ -16,16 +16,29 @@ public class WeekService {
 
     private final LocalDate seasonStartMonday;
     private final ZoneId zone;
+    private final int totalWeeks;
 
     public WeekService(
             @Value("${app.season.start-monday}") String startMonday,
-            @Value("${app.season.zone}") String zone) {
+            @Value("${app.season.zone}") String zone,
+            @Value("${app.season.total-weeks:26}") int totalWeeks) {
         this.seasonStartMonday = LocalDate.parse(startMonday);
         this.zone = ZoneId.of(zone);
+        this.totalWeeks = totalWeeks;
     }
 
     public ZoneId zone() {
         return zone;
+    }
+
+    /** Total number of H2H weeks in the season. */
+    public int totalWeeks() {
+        return totalWeeks;
+    }
+
+    /** The current week clamped to the season range [1, totalWeeks]. */
+    public int currentSeasonWeek() {
+        return Math.min(currentWeek(), totalWeeks);
     }
 
     public LocalDate weekStart(int weekNumber) {
