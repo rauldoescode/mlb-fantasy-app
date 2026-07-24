@@ -183,6 +183,82 @@ class ScoringServiceTest {
         assertThat(result.playerScores().get(0).scoringGamePk()).isEqualTo(5001);
     }
 
+    @Test
+    void onlyPerformancesPassedInAreScored_crossWeekIsolation() {
+        // Caller (scoreWeekDetailed) filters by week window; computeWeekScore must not
+        // invent points from games that were never supplied.
+        Integer playerId = 606;
+        RosterSlot slot = new RosterSlot(leagueId, userId, playerId, "START", true);
+        LocalDate inWeek = LocalDate.of(2026, 3, 24);
+        // If a future/previous week's box score leaked in, it would inflate the total.
+        LocalDate outsideWeek = LocalDate.of(2026, 4, 1);
+
+        WeekScoreResult withLeak = scoringService.computeWeekScore(
+                userId,
+                List.of(slot),
+                List.of(),
+                List.of(),
+                List.of(
+                        performance(playerId, inWeek, 6001, 1, 0, 0),
+                        performance(playerId, outsideWeek, 6002, 3, 0, 0)),
+                rules);
+        WeekScoreResult filtered = scoringService.computeWeekScore(
+                userId,
+                List.of(slot),
+                List.of(),
+                List.of(),
+                List.of(performance(playerId, inWeek, 6001, 1, 0, 0)),
+                rules);
+
+        assertThat(filtered.breakdown().totalPoints()).isEqualByComparingTo(new BigDecimal("4.00"));
+        assertThat(withLeak.breakdown().totalPoints()).isEqualByComparingTo(new BigDecimal("12.00"));
+        assertThat(filtered.playerScores().get(0).scoringGamePk()).isEqualTo(6001);
+    }
+
+    @Test
+    void lockedPerformanceSurvivesHigherLaterGame() {
+        Integer playerId = 707;
+        RosterSlot slot = new RosterSlot(leagueId, userId, playerId, "START", true);
+        LocalDate monday = LocalDate.of(2026, 3, 23);
+        LocalDate wednesday = LocalDate.of(2026, 3, 25);
+        PerformanceLock lock = new PerformanceLock(leagueId, userId, 1, playerId, 7001, false);
+
+        WeekScoreResult before = scoringService.computeWeekScore(
+                userId,
+                List.of(slot),
+                List.of(),
+                List.of(lock),
+                List.of(performance(playerId, monday, 7001, 1, 0, 0)),
+                rules);
+        WeekScoreResult after = scoringService.computeWeekScore(
+                userId,
+                List.of(slot),
+                List.of(),
+                List.of(lock),
+                List.of(
+                        performance(playerId, monday, 7001, 1, 0, 0),
+                        performance(playerId, wednesday, 7002, 4, 0, 0)),
+                rules);
+
+        assertThat(before.breakdown().totalPoints()).isEqualByComparingTo(new BigDecimal("4.00"));
+        assertThat(after.breakdown().totalPoints()).isEqualByComparingTo(new BigDecimal("4.00"));
+        assertThat(after.playerScores().get(0).scoringGamePk()).isEqualTo(7001);
+    }
+
+    @Test
+    void emptyRosterYieldsZeroEvenWithUnrelatedPerformances() {
+        WeekScoreResult result = scoringService.computeWeekScore(
+                userId,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(performance(999, LocalDate.of(2026, 3, 23), 1, 5, 0, 0)),
+                rules);
+
+        assertThat(result.breakdown().totalPoints()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(result.playerScores()).isEmpty();
+    }
+
     private DailyPerformance performance(int homeRuns, int rbi, int strikeoutsBatting) {
         return performance(1, LocalDate.of(2026, 3, 23), 1, homeRuns, rbi, strikeoutsBatting);
     }

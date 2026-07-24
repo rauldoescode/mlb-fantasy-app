@@ -25,6 +25,8 @@ import { UserAvatar } from "@/components/user-avatar";
 import { EmptyState } from "@/components/empty-state";
 import { CreateLeagueDialog } from "@/components/create-league-dialog";
 import { JoinLeagueDialog } from "@/components/join-league-dialog";
+import { LeagueSettingsForm } from "@/components/league-settings-form";
+import { ScoringRulesForm } from "@/components/scoring-rules-form";
 import { cn } from "@/lib/utils";
 
 export default function LeaguePage() {
@@ -327,6 +329,9 @@ function CommissionerPanel({ league }: { league: LeagueResponse }) {
         </div>
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
+
+        <LeagueSettingsForm league={league} />
+        <ScoringRulesForm leagueId={league.id} />
       </CardContent>
     </Card>
   );

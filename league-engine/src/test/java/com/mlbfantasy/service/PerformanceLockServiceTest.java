@@ -61,7 +61,7 @@ class PerformanceLockServiceTest {
         weekService = new WeekService("2026-03-23", "America/New_York", 26);
         liveScore = new AtomicReference<>();
         LeagueService leagueService = new LeagueService(
-                leagueRepository, leagueMemberRepository, null, null, null);
+                leagueRepository, leagueMemberRepository, null, null, null, null, null);
         ScoringService scoring = new ScoringService(null, null, null, null, null, null, null) {
             @Override
             public WeekScoreResult scoreWeekDetailed(UUID leagueId, UUID userId, int weekNumber) {

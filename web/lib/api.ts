@@ -72,6 +72,18 @@ export type LeagueResponse = {
   joinCode?: string | null;
 };
 
+export type UpdateLeagueSettingsRequest = {
+  name?: string;
+  salaryCap?: number;
+  rosterSize?: number;
+  maxMembers?: number;
+};
+
+export type ScoringRulesResponse = {
+  leagueId: string;
+  pointValues: Record<string, number>;
+};
+
 export type PublicLeagueResponse = {
   id: string;
   name: string;
@@ -258,6 +270,21 @@ export const api = {
     request<LeagueResponse>(`/api/leagues/${leagueId}/visibility`, {
       method: "PUT",
       body: JSON.stringify({ visibility }),
+    }),
+
+  updateLeagueSettings: (leagueId: string, body: UpdateLeagueSettingsRequest) =>
+    request<LeagueResponse>(`/api/leagues/${leagueId}/settings`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  getScoringRules: (leagueId: string) =>
+    request<ScoringRulesResponse>(`/api/leagues/${leagueId}/scoring-rules`),
+
+  updateScoringRules: (leagueId: string, pointValues: Record<string, number>) =>
+    request<ScoringRulesResponse>(`/api/leagues/${leagueId}/scoring-rules`, {
+      method: "PUT",
+      body: JSON.stringify({ pointValues }),
     }),
 
   getLeague: (leagueId: string) => request<LeagueResponse>(`/api/leagues/${leagueId}`),

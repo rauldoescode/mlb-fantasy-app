@@ -7,7 +7,9 @@ import com.mlbfantasy.dto.JoinLeagueRequest;
 import com.mlbfantasy.dto.LeagueResponse;
 import com.mlbfantasy.dto.PublicLeagueResponse;
 import com.mlbfantasy.dto.ScoringRulesRequest;
+import com.mlbfantasy.dto.ScoringRulesResponse;
 import com.mlbfantasy.dto.StandingRow;
+import com.mlbfantasy.dto.UpdateLeagueSettingsRequest;
 import com.mlbfantasy.dto.UpdateVisibilityRequest;
 import com.mlbfantasy.security.AppUserPrincipal;
 import com.mlbfantasy.service.LeagueService;
@@ -18,6 +20,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -84,6 +87,14 @@ public class LeagueController {
         return leagueService.updateVisibility(leagueId, principal.getId(), request.visibility());
     }
 
+    @PatchMapping("/{leagueId}/settings")
+    public LeagueResponse updateSettings(
+            @AuthenticationPrincipal AppUserPrincipal principal,
+            @PathVariable UUID leagueId,
+            @Valid @RequestBody UpdateLeagueSettingsRequest request) {
+        return leagueService.updateSettings(leagueId, principal.getId(), request);
+    }
+
     @GetMapping("/{leagueId}")
     public LeagueResponse get(
             @AuthenticationPrincipal AppUserPrincipal principal,
@@ -100,13 +111,19 @@ public class LeagueController {
         return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
+    @GetMapping("/{leagueId}/scoring-rules")
+    public ScoringRulesResponse getScoringRules(
+            @AuthenticationPrincipal AppUserPrincipal principal,
+            @PathVariable UUID leagueId) {
+        return leagueService.getScoringRules(leagueId, principal.getId());
+    }
+
     @PutMapping("/{leagueId}/scoring-rules")
-    public ResponseEntity<Void> updateScoringRules(
+    public ScoringRulesResponse updateScoringRules(
             @AuthenticationPrincipal AppUserPrincipal principal,
             @PathVariable UUID leagueId,
             @Valid @RequestBody ScoringRulesRequest request) {
-        leagueService.updateScoringRules(leagueId, principal.getId(), request.pointValues());
-        return ResponseEntity.noContent().build();
+        return leagueService.updateScoringRules(leagueId, principal.getId(), request.pointValues());
     }
 
     @GetMapping("/{leagueId}/standings")

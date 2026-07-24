@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface RosterSlotRepository extends JpaRepository<RosterSlot, UUID> {
 
+    List<RosterSlot> findByLeagueId(UUID leagueId);
+
     List<RosterSlot> findByLeagueIdAndUserId(UUID leagueId, UUID userId);
 
     List<RosterSlot> findByLeagueIdAndUserIdAndActiveTrue(UUID leagueId, UUID userId);

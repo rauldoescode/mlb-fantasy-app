@@ -4,25 +4,35 @@ import com.mlbfantasy.dto.AddMemberRequest;
 import com.mlbfantasy.dto.CreateLeagueRequest;
 import com.mlbfantasy.dto.LeagueResponse;
 import com.mlbfantasy.dto.PublicLeagueResponse;
+import com.mlbfantasy.dto.ScoringRulesResponse;
 import com.mlbfantasy.dto.StandingRow;
+import com.mlbfantasy.dto.UpdateLeagueSettingsRequest;
 import com.mlbfantasy.exception.ApiException;
 import com.mlbfantasy.model.League;
 import com.mlbfantasy.model.LeagueMember;
 import com.mlbfantasy.model.LeagueVisibility;
 import com.mlbfantasy.model.Matchup;
+import com.mlbfantasy.model.Player;
+import com.mlbfantasy.model.RosterSlot;
 import com.mlbfantasy.model.ScoringRule;
 import com.mlbfantasy.model.User;
 import com.mlbfantasy.repository.LeagueMemberRepository;
 import com.mlbfantasy.repository.LeagueRepository;
 import com.mlbfantasy.repository.MatchupRepository;
+import com.mlbfantasy.repository.PlayerRepository;
+import com.mlbfantasy.repository.RosterSlotRepository;
 import com.mlbfantasy.repository.ScoringRuleRepository;
 import com.mlbfantasy.repository.UserRepository;
 import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +45,8 @@ public class LeagueService {
     private static final int JOIN_CODE_LENGTH = 8;
     private static final int JOIN_CODE_MAX_ATTEMPTS = 10;
     private static final int DEFAULT_MAX_MEMBERS = 10;
+    private static final int MIN_ROSTER_SIZE = 5;
+    private static final int MAX_ROSTER_SIZE = 15;
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final LeagueRepository leagueRepository;
@@ -42,17 +54,23 @@ public class LeagueService {
     private final ScoringRuleRepository scoringRuleRepository;
     private final MatchupRepository matchupRepository;
     private final UserRepository userRepository;
+    private final RosterSlotRepository rosterSlotRepository;
+    private final PlayerRepository playerRepository;
 
     public LeagueService(LeagueRepository leagueRepository,
                          LeagueMemberRepository leagueMemberRepository,
                          ScoringRuleRepository scoringRuleRepository,
                          MatchupRepository matchupRepository,
-                         UserRepository userRepository) {
+                         UserRepository userRepository,
+                         RosterSlotRepository rosterSlotRepository,
+                         PlayerRepository playerRepository) {
         this.leagueRepository = leagueRepository;
         this.leagueMemberRepository = leagueMemberRepository;
         this.scoringRuleRepository = scoringRuleRepository;
         this.matchupRepository = matchupRepository;
         this.userRepository = userRepository;
+        this.rosterSlotRepository = rosterSlotRepository;
+        this.playerRepository = playerRepository;
     }
 
     @Transactional
@@ -164,6 +182,46 @@ public class LeagueService {
     }
 
     @Transactional
+    public LeagueResponse updateSettings(UUID leagueId, UUID requesterId,
+                                         UpdateLeagueSettingsRequest request) {
+        requireCommissioner(leagueId, requesterId);
+        League league = requireLeague(leagueId);
+
+        if (request.name() != null) {
+            String trimmed = request.name().trim();
+            if (trimmed.isEmpty()) {
+                throw ApiException.badRequest("League name cannot be blank");
+            }
+            if (trimmed.length() > 60) {
+                throw ApiException.badRequest("League name must be 60 characters or fewer");
+            }
+            league.setLeagueName(trimmed);
+        }
+        if (request.salaryCap() != null) {
+            validateSalaryCapLowering(leagueId, request.salaryCap());
+            league.setSalaryCap(request.salaryCap());
+        }
+        if (request.rosterSize() != null) {
+            validateRosterSize(request.rosterSize());
+            validateRosterSizeLowering(leagueId, request.rosterSize());
+            league.setRosterSize(request.rosterSize());
+        }
+        if (request.maxMembers() != null) {
+            validateMaxMembers(request.maxMembers());
+            long members = leagueMemberRepository.countByIdLeagueId(leagueId);
+            if (members > request.maxMembers()) {
+                throw ApiException.conflict(
+                        "Cannot set max members below current membership (" + members + ")");
+            }
+            league.setMaxMembers(request.maxMembers());
+        }
+
+        league = leagueRepository.save(league);
+        return LeagueResponse.from(
+                league, requesterId, leagueMemberRepository.countByIdLeagueId(leagueId));
+    }
+
+    @Transactional
     public void addMember(UUID leagueId, UUID requesterId, AddMemberRequest request) {
         requireCommissioner(leagueId, requesterId);
         League league = requireLeague(leagueId);
@@ -177,13 +235,51 @@ public class LeagueService {
                 new LeagueMember(leagueId, invitee.getId(), request.teamName()));
     }
 
+    @Transactional(readOnly = true)
+    public ScoringRulesResponse getScoringRules(UUID leagueId, UUID requesterId) {
+        requireMember(leagueId, requesterId);
+        Map<String, Double> stored = scoringRuleRepository.findById(leagueId)
+                .map(ScoringRule::getPointValues)
+                .orElse(Map.of());
+        return new ScoringRulesResponse(leagueId, resolvePointValues(stored));
+    }
+
     @Transactional
-    public void updateScoringRules(UUID leagueId, UUID requesterId, Map<String, Double> pointValues) {
+    public ScoringRulesResponse updateScoringRules(UUID leagueId, UUID requesterId,
+                                                   Map<String, Double> pointValues) {
         requireCommissioner(leagueId, requesterId);
+        if (pointValues == null || pointValues.isEmpty()) {
+            throw ApiException.badRequest("pointValues cannot be empty");
+        }
+        Set<String> allowed = Set.copyOf(ScoringService.SCORING_CATEGORIES);
+        for (Map.Entry<String, Double> entry : pointValues.entrySet()) {
+            if (!allowed.contains(entry.getKey())) {
+                throw ApiException.badRequest("Unknown scoring category: " + entry.getKey());
+            }
+            if (entry.getValue() == null || entry.getValue().isNaN() || entry.getValue().isInfinite()) {
+                throw ApiException.badRequest("Invalid point value for " + entry.getKey());
+            }
+        }
+
+        Map<String, Double> normalized = resolvePointValues(pointValues);
         ScoringRule rule = scoringRuleRepository.findById(leagueId)
                 .orElseGet(() -> new ScoringRule(leagueId, new HashMap<>()));
-        rule.setPointValues(new HashMap<>(pointValues));
+        rule.setPointValues(new HashMap<>(normalized));
         scoringRuleRepository.save(rule);
+        return new ScoringRulesResponse(leagueId, normalized);
+    }
+
+    /** Fills every known category in stable order; missing keys use defaults (or 0). */
+    private static Map<String, Double> resolvePointValues(Map<String, Double> stored) {
+        Map<String, Double> resolved = new LinkedHashMap<>();
+        for (String key : ScoringService.SCORING_CATEGORIES) {
+            Double value = stored != null ? stored.get(key) : null;
+            if (value == null) {
+                value = ScoringService.DEFAULT_POINT_VALUES.getOrDefault(key, 0.0);
+            }
+            resolved.put(key, value);
+        }
+        return resolved;
     }
 
     @Transactional(readOnly = true)
@@ -253,6 +349,53 @@ public class LeagueService {
     private void validateMaxMembers(int maxMembers) {
         if (maxMembers < 2 || maxMembers > 12 || maxMembers % 2 != 0) {
             throw ApiException.badRequest("maxMembers must be an even number between 2 and 12");
+        }
+    }
+
+    private void validateRosterSize(int rosterSize) {
+        if (rosterSize < MIN_ROSTER_SIZE || rosterSize > MAX_ROSTER_SIZE) {
+            throw ApiException.badRequest("rosterSize must be between 5 and 15");
+        }
+    }
+
+    private void validateRosterSizeLowering(UUID leagueId, int rosterSize) {
+        List<RosterSlot> slots = rosterSlotRepository.findByLeagueId(leagueId);
+        Map<UUID, Long> counts = slots.stream()
+                .collect(Collectors.groupingBy(RosterSlot::getUserId, Collectors.counting()));
+        long largest = counts.values().stream().mapToLong(Long::longValue).max().orElse(0L);
+        if (largest > rosterSize) {
+            throw ApiException.conflict(
+                    "Cannot set roster size below the largest current roster (" + largest + ")");
+        }
+    }
+
+    private void validateSalaryCapLowering(UUID leagueId, BigDecimal salaryCap) {
+        List<RosterSlot> slots = rosterSlotRepository.findByLeagueId(leagueId);
+        if (slots.isEmpty()) {
+            return;
+        }
+        List<Integer> playerIds = slots.stream()
+                .map(RosterSlot::getPlayerId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<Integer, BigDecimal> salaries = playerRepository.findAllById(playerIds).stream()
+                .collect(Collectors.toMap(
+                        Player::getMlbId,
+                        p -> p.getSalary() == null ? BigDecimal.ZERO : p.getSalary()));
+
+        Map<UUID, BigDecimal> totals = new HashMap<>();
+        for (RosterSlot slot : slots) {
+            BigDecimal salary = slot.getPlayerId() == null
+                    ? BigDecimal.ZERO
+                    : salaries.getOrDefault(slot.getPlayerId(), BigDecimal.ZERO);
+            totals.merge(slot.getUserId(), salary, BigDecimal::add);
+        }
+        boolean anyOver = totals.values().stream()
+                .anyMatch(total -> total.compareTo(salaryCap) > 0);
+        if (anyOver) {
+            throw ApiException.conflict(
+                    "Cannot set salary cap below a team's current roster salary");
         }
     }
 

@@ -51,6 +51,21 @@ public class ScoringService {
             "pitching_wins", 5.0,
             "strikeouts_batting", -1.0);
 
+    /**
+     * Stable category order for commissioner UI / API responses. Keys not listed in a
+     * league's stored rules default to {@link #DEFAULT_POINT_VALUES} or 0.
+     */
+    public static final List<String> SCORING_CATEGORIES = List.of(
+            "hits",
+            "home_runs",
+            "rbi",
+            "stolen_bases",
+            "strikeouts_batting",
+            "innings_pitched",
+            "earned_runs",
+            "pitching_wins",
+            "strikeouts_pitching");
+
     /** Maps a scoring-rule key to the matching numeric extractor on a box score. */
     private static final Map<String, Function<DailyPerformance, BigDecimal>> STAT_EXTRACTORS =
             Map.of(

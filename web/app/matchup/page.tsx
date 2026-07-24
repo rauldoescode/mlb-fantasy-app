@@ -10,12 +10,12 @@ import {
   ApiError,
   type LineupPlayerCard,
   type MatchupDetailResponse,
-  type MatchupLineupSide,
   type MatchupResponse,
   type SeasonResponse,
   type StandingRow,
 } from "@/lib/api";
 import { pickCurrentMatchup } from "@/lib/matchup-utils";
+import { orientSides } from "@/lib/matchup-orient";
 import { formatPoints, formatCategoryLabel } from "@/lib/format";
 import { MatchupLineupCard, busyKeyFor } from "@/components/matchup-lineup-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -294,55 +294,6 @@ export default function MatchupPage() {
       )}
     </div>
   );
-}
-
-/** Put the viewer's team on the left when they are a participant. */
-function emptySide(userId: string | null | undefined): MatchupLineupSide {
-  return {
-    userId: userId ?? "",
-    teamName: "",
-    starters: [],
-    bench: [],
-    totalPoints: 0,
-  };
-}
-
-function orientSides(detail: MatchupDetailResponse, userId: string) {
-  const youAreOne = detail.matchup.userOneId === userId;
-  const youAreTwo = detail.matchup.userTwoId === userId;
-  const swap = youAreTwo;
-  const isParticipant = youAreOne || youAreTwo;
-
-  const oneSide = detail.userOneLineup ?? emptySide(detail.matchup.userOneId);
-  const twoSide = detail.userTwoLineup ?? emptySide(detail.matchup.userTwoId);
-
-  const leftLineup = swap ? twoSide : oneSide;
-  const rightLineup = swap ? oneSide : twoSide;
-  const leftBreakdown = swap ? detail.userTwoBreakdown : detail.userOneBreakdown;
-  const rightBreakdown = swap ? detail.userOneBreakdown : detail.userTwoBreakdown;
-  const leftUserId = swap ? detail.matchup.userTwoId : detail.matchup.userOneId;
-  const rightUserId = swap ? detail.matchup.userOneId : detail.matchup.userTwoId;
-
-  const leftEditable = detail.lineupEditable && isParticipant && leftUserId === userId;
-  const rightEditable = detail.lineupEditable && isParticipant && rightUserId === userId;
-
-  const leftLabel =
-    isParticipant && leftUserId === userId ? "You" : leftLineup.teamName || "Opponent";
-  const rightLabel =
-    isParticipant && rightUserId === userId ? "You" : rightLineup.teamName || "Opponent";
-
-  return {
-    leftLineup: { ...leftLineup, teamName: leftLabel },
-    rightLineup: { ...rightLineup, teamName: rightLabel },
-    leftBreakdown,
-    rightBreakdown,
-    leftUserId,
-    rightUserId,
-    leftLabel,
-    rightLabel,
-    leftEditable,
-    rightEditable,
-  };
 }
 
 function TeamScore({

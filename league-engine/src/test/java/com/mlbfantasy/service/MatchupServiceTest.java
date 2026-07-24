@@ -73,13 +73,13 @@ class MatchupServiceTest {
                                        ScoringService scoringService,
                                        LineupLockService lineupLockService) {
         LeagueService leagueService = new LeagueService(
-                leagueRepository, leagueMemberRepository, null, null, null);
+                leagueRepository, leagueMemberRepository, null, null, null, null, null);
         return new MatchupService(
                 matchupRepository,
                 leagueMemberRepository,
                 rosterSlotRepository,
                 playerRepository,
-                null,
+                matchupPlayerScoreRepository,
                 leagueService,
                 scoringService,
                 lineupLockService,
@@ -390,7 +390,7 @@ class MatchupServiceTest {
         };
 
         LeagueService leagueService = new LeagueService(
-                leagueRepository, leagueMemberRepository, null, null, null);
+                leagueRepository, leagueMemberRepository, null, null, null, null, null);
         MatchupService service = new MatchupService(
                 matchupRepository,
                 leagueMemberRepository,
@@ -457,7 +457,7 @@ class MatchupServiceTest {
         });
 
         LeagueService leagueService = new LeagueService(
-                leagueRepository, leagueMemberRepository, null, null, null);
+                leagueRepository, leagueMemberRepository, null, null, null, null, null);
         MatchupService service = new MatchupService(
                 matchupRepository,
                 leagueMemberRepository,
@@ -493,25 +493,109 @@ class MatchupServiceTest {
     void finalizeCompletedWeeksSkipsCurrentInProgressWeek() {
         WeekService weekService = weeks(LocalDate.now().with(java.time.DayOfWeek.MONDAY).toString(), 26);
 
-        LeagueService leagueService = new LeagueService(
-                leagueRepository, leagueMemberRepository, null, null, null);
-        MatchupService service = new MatchupService(
-                matchupRepository,
-                leagueMemberRepository,
-                rosterSlotRepository,
-                playerRepository,
-                null,
-                leagueService,
-                null,
-                unlockedLineupService(weekService),
-                null,
-                null,
-                weekService);
+        MatchupService service = serviceWith(weekService);
 
         int count = service.finalizeCompletedWeeks(leagueId);
         assertThat(count).isZero();
         verify(matchupRepository, never()).save(any());
         verify(matchupRepository, never()).findByLeagueIdAndWeekNumber(any(), any(Integer.class));
+    }
+
+    @Test
+    void finalizeCompletedWeeksFinalizesFullyEndedPastWeek() {
+        // Season started long ago so week 1's Sunday is before today.
+        WeekService weekService = weeks("2000-01-03", 3);
+        UUID userOne = UUID.randomUUID();
+        UUID userTwo = UUID.randomUUID();
+        UUID matchupId = UUID.randomUUID();
+        Matchup open = new Matchup(leagueId, 1, userOne, userTwo);
+        setField(open, "id", matchupId);
+
+        AtomicInteger finalized = new AtomicInteger();
+        ScoringService scoring = new ScoringService(null, null, null, null, null, null, null) {
+            @Override
+            public WeekScoreResult scoreWeekDetailed(UUID leagueId, UUID userId, int weekNumber) {
+                return weekScore(userId, userId.equals(userOne) ? 1 : 2, true, "5.00");
+            }
+        };
+        PerformanceLockService locks = new PerformanceLockService(
+                null, null, null, null, scoring, weekService) {
+            @Override
+            public void autoLockBestIfAbsent(UUID leagueId, int weekNumber, UUID userId, Integer playerId) {
+                // no-op
+            }
+        };
+        when(matchupPlayerScoreRepository.saveAll(any())).thenAnswer(inv -> {
+            finalized.incrementAndGet();
+            return new ArrayList<>();
+        });
+        when(matchupRepository.findByLeagueIdAndWeekNumber(eq(leagueId), any(Integer.class)))
+                .thenAnswer(inv -> {
+                    int week = inv.getArgument(1);
+                    return week == 1 ? List.of(open) : List.of();
+                });
+        when(rosterSlotRepository.findByLeagueIdAndUserId(eq(leagueId), any(UUID.class)))
+                .thenReturn(List.of());
+        when(matchupRepository.save(any(Matchup.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        LeagueService leagueService = new LeagueService(
+                leagueRepository, leagueMemberRepository, null, null, null, null, null);
+        MatchupService service = new MatchupService(
+                matchupRepository,
+                leagueMemberRepository,
+                rosterSlotRepository,
+                playerRepository,
+                matchupPlayerScoreRepository,
+                leagueService,
+                scoring,
+                unlockedLineupService(weekService),
+                null,
+                locks,
+                weekService);
+
+        int count = service.finalizeCompletedWeeks(leagueId);
+
+        assertThat(count).isEqualTo(1);
+        assertThat(open.getStatus()).isEqualTo("FINAL");
+        assertThat(open.getFinalizedAt()).isNotNull();
+        assertThat(finalized.get()).isGreaterThan(0);
+    }
+
+    @Test
+    void getMatchupDetailReturnsEmptyLineupsWhenRosterEmpty() {
+        WeekService weekService = weeks("2026-03-23", 26);
+        UUID userOne = UUID.randomUUID();
+        UUID userTwo = UUID.randomUUID();
+        UUID matchupId = UUID.randomUUID();
+        int week = weekService.currentSeasonWeek();
+        Matchup matchup = new Matchup(leagueId, week, userOne, userTwo);
+        setField(matchup, "id", matchupId);
+
+        ScoringService scoring = new ScoringService(null, null, null, null, null, null, null) {
+            @Override
+            public WeekScoreResult scoreWeekDetailed(UUID leagueId, UUID userId, int weekNumber) {
+                return new WeekScoreResult(
+                        new ScoreBreakdown(userId, BigDecimal.ZERO, new LinkedHashMap<>()),
+                        List.of());
+            }
+        };
+        MatchupService service = serviceWith(weekService, scoring, unlockedLineupService(weekService));
+
+        when(matchupRepository.findById(matchupId)).thenReturn(Optional.of(matchup));
+        when(leagueMemberRepository.existsByIdLeagueIdAndIdUserId(leagueId, userOne))
+                .thenReturn(true);
+        when(rosterSlotRepository.findByLeagueIdAndUserId(eq(leagueId), any(UUID.class)))
+                .thenReturn(List.of());
+        when(leagueMemberRepository.findById(any(LeagueMemberId.class))).thenReturn(Optional.empty());
+        when(matchupRepository.save(any(Matchup.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        MatchupDetailResponse detail = service.getMatchupDetail(matchupId, userOne);
+
+        assertThat(detail.userOneLineup()).isNotNull();
+        assertThat(detail.userTwoLineup()).isNotNull();
+        assertThat(detail.userOneLineup().teamName()).isEqualTo("TBD");
+        assertThat(detail.userOneLineup().starters()).isEmpty();
+        assertThat(detail.userTwoLineup().bench()).isEmpty();
     }
 
     private static LineupLockService unlockedLineupService(WeekService weekService) {

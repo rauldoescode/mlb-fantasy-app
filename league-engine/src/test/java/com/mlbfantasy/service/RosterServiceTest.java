@@ -65,7 +65,7 @@ class RosterServiceTest {
     void setUp() {
         weekService = new WeekService("2026-03-23", "America/New_York", 26);
         LeagueService leagueService = new LeagueService(
-                leagueRepository, leagueMemberRepository, null, null, null);
+                leagueRepository, leagueMemberRepository, null, null, null, null, null);
         LineupLockService lineupLockService = new LineupLockService(
                 scheduledGameRepository,
                 lineupEligibilityRepository,

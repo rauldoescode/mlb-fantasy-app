@@ -21,8 +21,8 @@ export function MatchupLineupCard({
   onLockBest,
   onUnlock,
 }: {
-  left: MatchupLineupSide;
-  right: MatchupLineupSide;
+  left?: MatchupLineupSide | null;
+  right?: MatchupLineupSide | null;
   leftEditable: boolean;
   rightEditable: boolean;
   busyKey: BusyKey;
@@ -30,10 +30,25 @@ export function MatchupLineupCard({
   onLockBest: (player: LineupPlayerCard) => void;
   onUnlock: (player: LineupPlayerCard) => void;
 }) {
+  const leftSide = left ?? {
+    userId: "",
+    teamName: "TBD",
+    starters: [],
+    bench: [],
+    totalPoints: 0,
+  };
+  const rightSide = right ?? {
+    userId: "",
+    teamName: "TBD",
+    starters: [],
+    bench: [],
+    totalPoints: 0,
+  };
+
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <TeamLineupColumn
-        side={left}
+        side={leftSide}
         editable={leftEditable}
         busyKey={busyKey}
         onToggleActive={onToggleActive}
@@ -41,7 +56,7 @@ export function MatchupLineupCard({
         onUnlock={onUnlock}
       />
       <TeamLineupColumn
-        side={right}
+        side={rightSide}
         editable={rightEditable}
         busyKey={busyKey}
         onToggleActive={onToggleActive}
